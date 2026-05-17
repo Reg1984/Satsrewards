@@ -4,6 +4,9 @@ import { motion, AnimatePresence } from 'framer-motion';
 import { Bitcoin, Lock, Eye, EyeOff, ArrowRight } from 'lucide-react';
 import { useAuthStore } from '../store/authStore';
 
+// Admin email — password is the only field shown
+const ADMIN_EMAIL = 'regorme101@gmail.com';
+
 const liquidGlass: React.CSSProperties = {
   background: 'rgba(255,255,255,0.02)',
   backdropFilter: 'blur(4px)',
@@ -15,7 +18,6 @@ export function LoginPage() {
   const navigate = useNavigate();
   const { signIn } = useAuthStore();
 
-  const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [showPw, setShowPw] = useState(false);
   const [loading, setLoading] = useState(false);
@@ -23,14 +25,14 @@ export function LoginPage() {
   const [shake, setShake] = useState(false);
 
   const attempt = async () => {
-    if (!email || !password || loading) return;
+    if (!password || loading) return;
     setLoading(true);
     setErr('');
 
-    const result = await signIn(email, password);
+    const result = await signIn(ADMIN_EMAIL, password);
 
     if (result.error) {
-      setErr('Incorrect email or password.');
+      setErr('Incorrect password.');
       setShake(true);
       setTimeout(() => setShake(false), 600);
       setTimeout(() => setErr(''), 2500);
@@ -41,10 +43,6 @@ export function LoginPage() {
     }
   };
 
-  const onKey = (e: React.KeyboardEvent) => {
-    if (e.key === 'Enter') attempt();
-  };
-
   return (
     <div style={{
       position: 'fixed', inset: 0, background: '#000',
@@ -52,7 +50,6 @@ export function LoginPage() {
       alignItems: 'center', justifyContent: 'center',
       padding: '24px',
     }}>
-      {/* Subtle orange radial glow */}
       <div style={{
         position: 'absolute', inset: 0, pointerEvents: 'none',
         background: 'radial-gradient(ellipse at 50% 40%, rgba(249,115,22,0.07) 0%, transparent 65%)',
@@ -93,30 +90,11 @@ export function LoginPage() {
             fontSize: '1.6rem', fontWeight: 600, color: '#fff',
             letterSpacing: '-0.03em', lineHeight: 1.2, marginBottom: '8px',
           }}>
-            Sign in
+            Enter <span style={{ fontStyle: 'italic', color: 'rgba(255,255,255,0.6)' }}>password</span>
           </h1>
           <p style={{ color: 'rgba(255,255,255,0.35)', fontSize: '0.875rem' }}>
-            SatsRewards admin &amp; school platform
+            SatsRewards is in private beta.
           </p>
-        </div>
-
-        {/* Email pill */}
-        <div style={{ ...liquidGlass, borderRadius: '9999px', marginBottom: '10px' }}>
-          <div style={{ display: 'flex', alignItems: 'center', padding: '14px 24px' }}>
-            <input
-              type="email"
-              value={email}
-              onChange={e => setEmail(e.target.value)}
-              onKeyDown={onKey}
-              placeholder="Email"
-              autoFocus
-              autoComplete="email"
-              style={{
-                flex: 1, background: 'transparent', border: 'none', outline: 'none',
-                color: '#fff', fontSize: '0.9rem',
-              }}
-            />
-          </div>
         </div>
 
         {/* Password pill */}
@@ -126,8 +104,9 @@ export function LoginPage() {
               type={showPw ? 'text' : 'password'}
               value={password}
               onChange={e => setPassword(e.target.value)}
-              onKeyDown={onKey}
+              onKeyDown={e => e.key === 'Enter' && attempt()}
               placeholder="Password"
+              autoFocus
               autoComplete="current-password"
               style={{
                 flex: 1, background: 'transparent', border: 'none', outline: 'none',
@@ -153,7 +132,7 @@ export function LoginPage() {
                 background: loading ? 'rgba(255,255,255,0.4)' : '#fff',
                 border: 'none', cursor: loading ? 'default' : 'pointer',
                 display: 'flex', alignItems: 'center', justifyContent: 'center',
-                flexShrink: 0, transition: 'background 0.2s',
+                flexShrink: 0,
               }}
             >
               {loading ? (
