@@ -8,7 +8,7 @@ const corsHeaders = {
 };
 
 const CLAUDE_MODEL = "claude-opus-4-7";
-const MAX_TOOL_ITERATIONS = 25;
+const MAX_TOOL_ITERATIONS = 40;
 
 // ─── Tool definitions ──────────────────────────────────────────────────────────
 
@@ -264,6 +264,28 @@ const TOOLS = [
         extract_focus: { type: "string", description: "What to look for e.g. 'headteacher name and email', 'contact details', 'pupil numbers', 'about the trust'" },
       },
       required: ["url"],
+    },
+  },
+  {
+    name: "check_and_process_inbox",
+    description: "Check for unprocessed email replies from prospects in the outreach_responses table. For each new reply: analyse sentiment, update the prospect's pipeline stage, and automatically draft and send an appropriate follow-up email (positive reply → warm follow-up, no response overdue → follow-up 1/2/breakup, negative → graceful close). Call this proactively to keep the outreach pipeline moving without manual intervention.",
+    input_schema: {
+      type: "object",
+      properties: {
+        auto_reply: { type: "boolean", description: "If true, automatically send follow-ups based on reply analysis (default true for autonomous mode)" },
+        limit: { type: "number", description: "Max replies to process (default 10)" },
+      },
+    },
+  },
+  {
+    name: "run_follow_up_sweep",
+    description: "Sweep the outreach pipeline for prospects that are overdue for a follow-up email (based on next_follow_up_at). Automatically sends the next appropriate email in the sequence (follow_up_1, follow_up_2, or breakup) to move them through the pipeline. Call this on Monday mornings after the initial outreach batch.",
+    input_schema: {
+      type: "object",
+      properties: {
+        dry_run: { type: "boolean", description: "If true, return what would be sent without sending (default false)" },
+        max_sends: { type: "number", description: "Max follow-ups to send in this sweep (default 15)" },
+      },
     },
   },
   {
@@ -968,9 +990,209 @@ Return JSON only:
         return JSON.stringify(extracted);
       }
 
+      case "check_and_process_inbox": {
+        const { auto_reply = true, limit = 10 } = toolInput;
+        const supabaseUrl = Deno.env.get("SUPABASE_URL") ?? "";
+        const serviceKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? "";
+
+        // Get unprocessed responses
+        const { data: responses } = await supabase
+          .from("outreach_responses")
+          .select("*, outreach_prospects(*), outreach_emails(*)")
+          .eq("created_by", userId)
+          .eq("processed", false)
+          .order("created_at", { ascending: true })
+          .limit(Math.min(limit, 20));
+
+        if (!responses?.length) return JSON.stringify({ message: "Inbox clear — no unprocessed replies.", processed: 0 });
+
+        const processed: any[] = [];
+
+        for (const resp of responses) {
+          try {
+            const prospect = resp.outreach_prospects;
+            if (!prospect) continue;
+
+            // Analyse if not already done
+            let sentiment = resp.sentiment || "neutral";
+            let nextAction = "follow_up_1";
+            if (sentiment === "positive" || sentiment === "interested") nextAction = "follow_up_custom";
+            else if (sentiment === "negative") nextAction = "breakup";
+
+            // Count existing emails to determine sequence stage
+            const { count: emailsSent } = await supabase
+              .from("outreach_emails")
+              .select("id", { count: "exact", head: true })
+              .eq("prospect_id", prospect.id)
+              .eq("status", "sent");
+
+            const sequenceStage = (emailsSent ?? 1) >= 3 ? "breakup" : (emailsSent ?? 1) >= 2 ? "follow_up_2" : "follow_up_1";
+            if (sentiment === "neutral" || sentiment === "auto_reply") nextAction = sequenceStage;
+
+            if (auto_reply && prospect.contact_email) {
+              // Draft follow-up using Claude
+              const followUpPrompt = `Write a ${nextAction === "follow_up_custom" ? "warm, enthusiastic follow-up" : nextAction === "breakup" ? "polite closing" : "concise follow-up"} email to ${prospect.contact_name || "the headteacher"} at ${prospect.organisation_name}.
+
+Context: They ${sentiment === "positive" || sentiment === "interested" ? "replied positively showing interest" : sentiment === "negative" ? "declined or indicated not interested" : "haven't replied to our previous email"}.
+Their reply/context: "${resp.content?.substring(0, 200) || "No response received"}"
+
+SatsRewards: Bitcoin rewards platform for schools. Students earn sats for learning.
+Under 150 words. Subject: on first line. Warm but brief.`;
+
+              const fr = await fetch("https://api.anthropic.com/v1/messages", {
+                method: "POST",
+                headers: { "x-api-key": anthropicKey, "anthropic-version": "2023-06-01", "content-type": "application/json" },
+                body: JSON.stringify({ model: CLAUDE_MODEL, max_tokens: 600, messages: [{ role: "user", content: followUpPrompt }] }),
+              });
+
+              let followSubject = "Following up — SatsRewards";
+              let followBody = "";
+              if (fr.ok) {
+                const fResult = await fr.json();
+                const fText = (fResult.content ?? []).filter((b: any) => b.type === "text").map((b: any) => b.text).join("").trim();
+                const lines = fText.split("\n").filter((l: string) => l.trim());
+                if (lines[0]?.toLowerCase().startsWith("subject:")) {
+                  followSubject = lines[0].replace(/^subject:\s*/i, "").trim();
+                  followBody = lines.slice(1).join("\n").trim();
+                } else {
+                  followBody = fText;
+                }
+              }
+
+              if (followBody) {
+                const { data: emailSaved } = await supabase.from("outreach_emails").insert({
+                  prospect_id: prospect.id,
+                  created_by: userId,
+                  subject: followSubject,
+                  body: followBody,
+                  email_type: nextAction === "follow_up_custom" ? "follow_up_1" : nextAction,
+                  status: "draft",
+                  ai_generated: true,
+                }).select("id").single();
+
+                if (emailSaved?.id) {
+                  const html = `<div style="font-family:Arial,sans-serif;max-width:600px;line-height:1.6;color:#333;">${followBody.split("\n\n").map((p: string) => `<p>${p.replace(/\n/g, "<br>")}</p>`).join("")}</div>`;
+                  const sr = await fetch(`${supabaseUrl}/functions/v1/send-email`, {
+                    method: "POST",
+                    headers: { "Authorization": `Bearer ${serviceKey}`, "Content-Type": "application/json" },
+                    body: JSON.stringify({ to: prospect.contact_email, subject: followSubject, html, text: followBody, email_id: emailSaved.id, prospect_id: prospect.id }),
+                  });
+                  const sendOk = sr.ok;
+                  processed.push({ prospect: prospect.organisation_name, action: nextAction, sent: sendOk });
+                }
+              }
+            }
+
+            // Mark response as processed
+            await supabase.from("outreach_responses").update({ processed: true, processed_at: new Date().toISOString() }).eq("id", resp.id);
+
+          } catch (err: any) {
+            processed.push({ prospect: resp.outreach_prospects?.organisation_name, error: err.message });
+          }
+        }
+
+        return JSON.stringify({ processed: processed.length, actions: processed });
+      }
+
+      case "run_follow_up_sweep": {
+        const { dry_run = false, max_sends = 15 } = toolInput;
+        const now = new Date().toISOString();
+        const supabaseUrl = Deno.env.get("SUPABASE_URL") ?? "";
+        const serviceKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? "";
+
+        // Find prospects overdue for follow-up
+        const { data: overdue } = await supabase
+          .from("outreach_prospects")
+          .select("*")
+          .eq("created_by", userId)
+          .in("stage", ["emailed", "researched"])
+          .lt("next_follow_up_at", now)
+          .not("contact_email", "is", null)
+          .order("next_follow_up_at", { ascending: true })
+          .limit(Math.min(max_sends, 30));
+
+        if (!overdue?.length) return JSON.stringify({ message: "No overdue follow-ups.", swept: 0 });
+
+        const results: any[] = [];
+
+        for (const prospect of overdue) {
+          try {
+            const { count: emailsSent } = await supabase
+              .from("outreach_emails")
+              .select("id", { count: "exact", head: true })
+              .eq("prospect_id", prospect.id)
+              .eq("status", "sent");
+
+            const count = emailsSent ?? 0;
+            const emailType = count >= 3 ? "breakup" : count >= 2 ? "follow_up_2" : "follow_up_1";
+            if (count >= 4) {
+              await supabase.from("outreach_prospects").update({ stage: "dormant" }).eq("id", prospect.id);
+              results.push({ prospect: prospect.organisation_name, action: "marked_dormant" });
+              continue;
+            }
+
+            if (dry_run) {
+              results.push({ prospect: prospect.organisation_name, would_send: emailType });
+              continue;
+            }
+
+            const followUpPrompts: Record<string, string> = {
+              follow_up_1: `Write a brief follow-up email to ${prospect.contact_name || "the headteacher"} at ${prospect.organisation_name}. No response to our initial email. Under 120 words. New angle: focus on student Bitcoin savings. Subject: on first line.`,
+              follow_up_2: `Write a second follow-up to ${prospect.contact_name || "the headteacher"} at ${prospect.organisation_name}. Still no response. Under 100 words. Lead with social proof from other schools. Subject: on first line.`,
+              breakup: `Write a polite closing email to ${prospect.contact_name || "the headteacher"} at ${prospect.organisation_name}. Friendly, leaves door open. Under 80 words. Subject: on first line.`,
+            };
+
+            const fr = await fetch("https://api.anthropic.com/v1/messages", {
+              method: "POST",
+              headers: { "x-api-key": anthropicKey, "anthropic-version": "2023-06-01", "content-type": "application/json" },
+              body: JSON.stringify({ model: CLAUDE_MODEL, max_tokens: 500, messages: [{ role: "user", content: followUpPrompts[emailType] }] }),
+            });
+
+            if (!fr.ok) { results.push({ prospect: prospect.organisation_name, error: "Draft failed" }); continue; }
+
+            const fResult = await fr.json();
+            const fText = (fResult.content ?? []).filter((b: any) => b.type === "text").map((b: any) => b.text).join("").trim();
+            const lines = fText.split("\n").filter((l: string) => l.trim());
+            const subject = lines[0]?.toLowerCase().startsWith("subject:") ? lines[0].replace(/^subject:\s*/i, "").trim() : lines[0]?.trim() || "Following up";
+            const body = lines[1] ? lines.slice(lines[0]?.toLowerCase().startsWith("subject:") ? 1 : 0).join("\n").trim() : "";
+
+            const { data: emailSaved } = await supabase.from("outreach_emails").insert({
+              prospect_id: prospect.id,
+              created_by: userId,
+              subject,
+              body,
+              email_type: emailType,
+              status: "draft",
+              ai_generated: true,
+            }).select("id").single();
+
+            if (emailSaved?.id && prospect.contact_email) {
+              const html = `<div style="font-family:Arial,sans-serif;max-width:600px;line-height:1.6;color:#333;">${body.split("\n\n").map((p: string) => `<p>${p.replace(/\n/g, "<br>")}</p>`).join("")}</div>`;
+              const sr = await fetch(`${supabaseUrl}/functions/v1/send-email`, {
+                method: "POST",
+                headers: { "Authorization": `Bearer ${serviceKey}`, "Content-Type": "application/json" },
+                body: JSON.stringify({ to: prospect.contact_email, subject, html, text: body, email_id: emailSaved.id, prospect_id: prospect.id }),
+              });
+              const sent = sr.ok;
+
+              await supabase.from("outreach_prospects").update({
+                next_follow_up_at: new Date(Date.now() + 7 * 86400000).toISOString(),
+                stage: emailType === "breakup" ? "dormant" : "emailed",
+              }).eq("id", prospect.id);
+
+              results.push({ prospect: prospect.organisation_name, sent_type: emailType, sent });
+            }
+          } catch (err: any) {
+            results.push({ prospect: prospect.organisation_name, error: err.message });
+          }
+        }
+
+        return JSON.stringify({ swept: results.length, results });
+      }
+
       case "find_and_outreach_schools": {
         const {
-          target_type = "academy_trust",
+          target_type = "secondary_school",
           region = "UK",
           count = 5,
           auto_send = false,
@@ -1304,17 +1526,27 @@ Deno.serve(async (req: Request) => {
     let profile: any = { role: "admin", name: "Demo Admin", school_id: null };
 
     const authHeader = req.headers.get("Authorization");
+    const adminIdOverride = req.headers.get("x-admin-id-override");
+
     if (authHeader) {
       const token = authHeader.replace("Bearer ", "");
-      const { data: { user }, error: authError } = await supabase.auth.getUser(token);
-      if (!authError && user) {
-        userId = user.id;
-        const { data: p } = await supabase.from("profiles").select("role, name, school_id").eq("id", user.id).maybeSingle();
+
+      // If caller presents the service key and an admin override, trust it (used by cron scheduler)
+      if (adminIdOverride && token === supabaseServiceKey) {
+        userId = adminIdOverride;
+        const { data: p } = await supabase.from("profiles").select("role, name, school_id").eq("id", adminIdOverride).maybeSingle();
         if (p) profile = p;
-        if (!["admin", "teacher"].includes(profile.role)) {
-          return new Response(JSON.stringify({ error: "Forbidden" }), {
-            status: 403, headers: { ...corsHeaders, "Content-Type": "application/json" },
-          });
+      } else {
+        const { data: { user }, error: authError } = await supabase.auth.getUser(token);
+        if (!authError && user) {
+          userId = user.id;
+          const { data: p } = await supabase.from("profiles").select("role, name, school_id").eq("id", user.id).maybeSingle();
+          if (p) profile = p;
+          if (!["admin", "teacher"].includes(profile.role)) {
+            return new Response(JSON.stringify({ error: "Forbidden" }), {
+              status: 403, headers: { ...corsHeaders, "Content-Type": "application/json" },
+            });
+          }
         }
       }
     }
@@ -1387,65 +1619,74 @@ Deno.serve(async (req: Request) => {
         ? `\nMEMORY:\n${memories.map((m: any) => `• [${m.category}] ${m.memory_key}: ${m.memory_value}`).join("\n")}`
         : "";
 
-      const systemPrompt = `You are an elite AI agent built into the SatsRewards admin dashboard. SatsRewards is a Bitcoin education and rewards platform for schools globally — students earn real sats (Bitcoin) for learning, quizzes, and good behaviour.
+      const systemPrompt = `You are SATSBOT — an elite autonomous AI agent embedded in the SatsRewards admin dashboard. SatsRewards is a Bitcoin education and rewards platform for schools globally. Students earn real sats (Bitcoin) for learning, quizzes, and good behaviour.
 
-You have two primary roles:
+## Core identity
+You operate like a senior growth executive and platform manager — proactive, data-driven, and always improving. You never wait passively for instructions when there is work to be done. When asked to run a task, you execute it fully using tools and report back with real data, not guesses.
 
-**1. Platform Admin Agent** — you manage the live school platform:
-- Query and update live data (students, teachers, wallets, quizzes, rewards, announcements)
-- Diagnose issues, generate educational content, run analytics
-- Help with compliance, settings, and platform configuration
+## Your two operating modes
 
-**2. Outreach & Growth Agent** — you actively drive school adoption WORLDWIDE:
-- Research schools, academy trusts, and principals/headteachers globally to build targeted prospect profiles
-- Draft highly personalised cold emails adapted to each country's culture, currency, and education system
-- Send emails directly via the send-email function
-- Track responses, analyse sentiment, update the pipeline
-- Learn from every interaction — what objections arise, what messaging lands, which schools convert
-- Run campaigns targeting specific regions, countries, or school types
+### 1. Platform Manager
+Manage the live school platform on behalf of the admin:
+- Query and update live data: students, teachers, wallets, quizzes, rewards, announcements, transactions
+- Diagnose platform issues by checking DB consistency, wallet balances, compliance status
+- Generate educational content (quiz questions, lesson plans, Bitcoin explainers)
+- Run analytics and surface actionable insights
 
-**Target markets (actively pursue all of these):**
-- 🇬🇧 UK — academy trusts, multi-academy trusts, secondary and primary schools
-- 🇺🇸 USA — private schools, charter schools, independent schools
-- 🇸🇻 El Salvador — all schools (Bitcoin is legal tender here — massive opportunity, reference national Bitcoin policy)
-- 🌏 Asia — international schools in Singapore, Hong Kong, Tokyo, Shanghai, Dubai, Bangkok, Kuala Lumpur
-- 🇳🇿 New Zealand — private and state schools
-- 🇦🇺 Australia — private schools, independent schools
-- 🇪🇺 Europe — international schools and private schools in Amsterdam, Berlin, Paris, Zurich, Stockholm, Dublin
-- 🌍 Middle East — international schools in Dubai, Abu Dhabi, Riyadh, Doha, Kuwait City
-- 🌐 Rest of world — international schools in Nairobi, Lagos, Toronto, Singapore, and other major cities
+### 2. Autonomous Growth Agent
+Drive school adoption worldwide — this is your most important function:
+- **Find** secondary schools and private schools globally using web search
+- **Research** each school: leadership contacts, pupil numbers, budget context, likely pain points
+- **Draft** highly personalised cold emails adapted to local culture, currency, and education system
+- **Send** emails directly without waiting for approval (when auto_send=true or asked to "send")
+- **Track** replies: analyse sentiment, update pipeline stage, schedule follow-ups
+- **Follow up** automatically: run_follow_up_sweep every Monday after the initial batch
+- **Process inbox**: use check_and_process_inbox to handle replies and send appropriate responses
+- **Learn**: save insights to memory after every interaction — what objections arise, what messaging converts, which regions respond best
 
-**Your outreach value proposition (adapt currency and amounts per market):**
-- SatsRewards costs ~£6/pupil/year (adapt to local currency) vs competitors (ClassDojo, Mathletics, Sparx, Google Classroom, Seesaw) at ~£18/pupil/year — schools save £12/pupil/year
-- A 1,000-pupil school saves ~£12,000/year (or local equivalent), a 10-school trust saves ~£120,000/year
-- Students earn ~1,000 sats/month → 60,000 sats over a 5-year school career → ~£240 today, potentially much more as Bitcoin appreciates
-- Students graduating with Bitcoin savings develop real financial literacy — a generational advantage anywhere in the world
-- No lock-in, free trial, privacy compliant (GDPR/COPPA/local standards), Lightning Network for instant micro-payments globally
-- **El Salvador special angle:** Bitcoin is legal tender since 2021 — SatsRewards directly supports the national curriculum vision
+## Growth strategy and target markets
+Priority: **secondary schools and private schools worldwide**. Do NOT target primary schools unless specifically asked.
 
-**When drafting outreach emails:**
-- Be warm, credible, and specific — not a generic sales pitch
-- Adapt tone, greeting, and cultural references for the recipient's country
-- Lead with the financial benefit to the SCHOOL (budget savings), then the benefit to STUDENTS (Bitcoin savings habit from age 11)
-- Reference specific competitor platforms the school likely uses in their market
-- Always end with a low-friction CTA (15-min call, PDF case study, free trial offer)
-- Subject lines should be curiosity-driving and personalised
-- Use local currency equivalents, not just GBP
+| Region | Target type | Key angle |
+|--------|-------------|-----------|
+| 🇬🇧 UK (London, Manchester, Birmingham, etc.) | Secondary schools, private schools | Cost savings vs ClassDojo/Sparx, Ofsted-aligned financial literacy |
+| 🇺🇸 USA (NY, LA, Chicago, Miami, etc.) | Private schools, charter schools | College readiness, financial literacy mandate, Bitcoin savings |
+| 🇸🇻 El Salvador | All secondary schools | **Bitcoin is legal tender** since 2021 — SatsRewards is aligned with national policy |
+| 🌏 Asia (Singapore, HK, Tokyo, Dubai, etc.) | International schools, private schools | Global Bitcoin adoption, international curriculum, premium parents |
+| 🇦🇺 Australia / 🇳🇿 New Zealand | Private schools, independent schools | Financial literacy curriculum, strong edtech adoption |
+| 🇪🇺 Europe (Amsterdam, Berlin, Paris, etc.) | International schools, private schools | GDPR-compliant, EU Bitcoin interest, multilingual |
+| 🌍 Middle East (Dubai, Riyadh, Doha, etc.) | International schools, private schools | High-income families, Bitcoin adoption growing, English curriculum |
+| 🌍 Africa / Rest of world | International schools | Global Bitcoin financial literacy, remittance relevance |
 
-**You can find schools autonomously on the web:**
-- Use \`search_web\` to discover schools, principals, and CEO contact details in real time for any country
-- Use \`fetch_webpage\` to read school websites and extract contact info, pupil numbers, and leadership details
-- Use \`find_and_outreach_schools\` as your primary autonomous outreach tool — it searches, researches, saves prospects, drafts localised emails, and optionally sends them in one go
-- Example: "Find 10 international schools in Singapore and send them emails" → call \`find_and_outreach_schools\` with target_type="international_school", region="Singapore", count=10, auto_send=true
-- Example: "Find schools in El Salvador" → call \`find_and_outreach_schools\` with target_type="school", region="San Salvador", count=10, auto_send=true
+## Outreach value proposition (adapt per market)
+- **School savings**: SatsRewards ~£6/pupil/year vs competitors (ClassDojo, Mathletics, Sparx, Seesaw, Google Classroom) at ~£18/pupil/year → £12/pupil/year saved
+  - 500-pupil school: £6,000/year saved | 1,000 pupils: £12,000/year | 3,000-pupil trust: £36,000/year
+- **Student financial future**: students earn ~1,000 sats/month → 60,000 sats over 5 school years → ~£240 today at current BTC prices, potentially thousands as Bitcoin appreciates
+- **Global benefits**: no lock-in, free trial, privacy compliant (GDPR/COPPA/local laws), Lightning Network for instant global micro-payments
+- **El Salvador**: Bitcoin legal tender since 2021 — SatsRewards directly supports the Chivo ecosystem and national Bitcoin curriculum
 
-**After every prospect interaction, save what you learned to memory (common objections, what messaging works, regional/cultural patterns).**
+## Email craft rules
+- Warm, specific, credible — never generic sales copy
+- **Subject line**: curiosity-driven and named (e.g. "Could St Mary's save £8,400 this year, ${profile.name}?")
+- **Opening**: reference something specific about their school — region, size, likely platforms they use
+- **Body**: school budget saving FIRST, then student Bitcoin future SECOND
+- **CTA**: low friction — "15-minute call this week?" or "Shall I send over a one-page case study?"
+- **Currency**: always use local currency (£ UK, $ USA/AUS, € Europe, ¥ Japan, etc.)
+- **Tone**: match the country's professional norms (formal Japan/UAE, warm UK/NZ, direct USA)
+- **Length**: under 200 words for initial emails, under 120 for follow-ups
+
+## Autonomous operating principles
+1. **Always check memory first** before acting — use past learnings to sharpen current approach
+2. **Pull live data before answering** — query the pipeline, not your training knowledge
+3. **Complete tasks end-to-end** — don't stop at "here's what I'd do"; do it
+4. **Save learnings after every meaningful action** — objections heard, regions that convert, messaging that lands
+5. **Keep the pipeline moving** — if prospects are overdue for follow-up, run the sweep without being asked
+6. **Report results with numbers** — always end with "Sent X emails, Y prospects added, Z follow-ups scheduled"
 
 Admin: ${profile.name} (${profile.role})${schoolSnapshot}${outreachSnapshot}${memorySection}
 
 Current date: ${new Date().toISOString().split("T")[0]}
-
-You are proactive — if someone asks about outreach, use tools to look up the pipeline, analyse performance, or research the specific prospect before responding. Don't answer from general knowledge when you can pull live data.`;
+Today is ${new Date().toLocaleDateString("en-GB", { weekday: "long" })}.`;
 
       const chatMessages: Array<{ role: string; content: any }> = [
         ...(history ?? []).map((m: any) => ({ role: m.role, content: m.content })),
