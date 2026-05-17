@@ -1,0 +1,178 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  body {
+    @apply bg-white min-h-screen font-sans text-gray-900;
+  }
+
+  h1, h2, h3, h4, h5, h6 {
+    @apply font-medium;
+  }
+
+  *:focus {
+    outline: none;
+  }
+
+  *:focus-visible {
+    @apply outline-none ring-2 ring-orange-400 ring-offset-1;
+  }
+
+  button:focus:not(:focus-visible),
+  a:focus:not(:focus-visible) {
+    outline: none;
+    box-shadow: none;
+  }
+}
+
+@layer components {
+  .btn-neu {
+    @apply px-4 py-2 bg-white rounded-lg shadow-neu-sm hover:shadow-neu active:shadow-neu-inner-sm transition-all duration-200 ease-in-out border border-gray-100 transform hover:scale-[1.02] active:scale-[0.98];
+  }
+
+  .card-neu {
+    @apply bg-white rounded-xl shadow-neu-sm p-6 border border-gray-100 hover:shadow-neu transition-all duration-300 ease-in-out;
+  }
+
+  .input-neu {
+    @apply bg-white shadow-neu-inner-sm rounded-lg px-4 py-2 focus:outline-none focus:ring-2 focus:ring-orange-500 transition-shadow duration-200 ease-in-out border border-gray-200;
+  }
+  
+  .animate-enter {
+    @apply animate-slide-up;
+  }
+  
+  .animate-hover {
+    @apply transition-all duration-200 hover:scale-[1.02];
+  }
+  
+  .animate-press {
+    @apply active:scale-[0.98] transition-transform duration-100;
+  }
+  
+  .animate-pulse-soft {
+    @apply animate-pulse-soft;
+  }
+}
+
+/* React Big Calendar Styles */
+.rbc-calendar {
+  @apply font-sans;
+}
+
+.rbc-toolbar {
+  @apply mb-4;
+}
+
+.rbc-toolbar button {
+  @apply bg-white text-gray-700 border border-gray-300 rounded-md shadow-sm hover:bg-gray-50 transition-colors;
+}
+
+.rbc-toolbar button.rbc-active {
+  @apply bg-orange-500 text-white border-orange-500 hover:bg-orange-600;
+}
+
+.rbc-event {
+  @apply bg-orange-500 border-orange-600 rounded-md;
+}
+
+.rbc-event.event-class {
+  @apply bg-blue-500 border-blue-600;
+}
+
+.rbc-event.event-meeting {
+  @apply bg-purple-500 border-purple-600;
+}
+
+.rbc-event.event-exam {
+  @apply bg-red-500 border-red-600;
+}
+
+.rbc-event.event-other {
+  @apply bg-green-500 border-green-600;
+}
+
+.rbc-event.recurring-event {
+  @apply border-dashed;
+}
+
+.rbc-today {
+  @apply bg-orange-50;
+}
+
+.rbc-off-range-bg {
+  @apply bg-gray-100;
+}
+
+.rbc-header {
+  @apply font-medium text-gray-700 py-2;
+}
+
+.rbc-time-view {
+  @apply border border-gray-200 rounded-lg overflow-hidden;
+}
+
+.rbc-time-header {
+  @apply border-b border-gray-200;
+}
+
+.rbc-time-content {
+  @apply border-t border-gray-200;
+}
+
+.rbc-day-slot .rbc-time-slot {
+  @apply border-t border-gray-100;
+}
+
+.rbc-timeslot-group {
+  @apply border-b border-gray-200;
+}
+
+.rbc-time-view .rbc-header {
+  @apply border-b border-gray-200;
+}
+
+.rbc-month-view {
+  @apply border border-gray-200 rounded-lg overflow-hidden;
+}
+
+.rbc-month-header {
+  @apply bg-gray-50;
+}
+
+.rbc-month-row {
+  @apply border-b border-gray-200;
+}
+
+.rbc-day-bg {
+  @apply border-r border-gray-200;
+}
+
+.rbc-row-segment {
+  @apply px-1 py-0.5;
+}
+
+.rbc-agenda-view {
+  @apply border border-gray-200 rounded-lg overflow-hidden;
+}
+
+.rbc-agenda-table {
+  @apply border-collapse;
+}
+
+.rbc-agenda-table th {
+  @apply bg-gray-50 font-medium text-gray-700 py-2 px-3 border-b border-gray-200;
+}
+
+.rbc-agenda-table td {
+  @apply py-2 px-3 border-b border-gray-200;
+}
+
+.rbc-agenda-time-cell {
+  @apply text-gray-500;
+}
+
+.rbc-agenda-event-cell {
+  @apply text-gray-800;
+}

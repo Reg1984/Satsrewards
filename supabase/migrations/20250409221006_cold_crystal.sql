@@ -1,0 +1,38 @@
+-- Disable RLS on all tables
+ALTER TABLE profiles DISABLE ROW LEVEL SECURITY;
+ALTER TABLE schools DISABLE ROW LEVEL SECURITY;
+ALTER TABLE awards DISABLE ROW LEVEL SECURITY;
+ALTER TABLE attendance DISABLE ROW LEVEL SECURITY;
+ALTER TABLE behavior_records DISABLE ROW LEVEL SECURITY;
+ALTER TABLE educational_content DISABLE ROW LEVEL SECURITY;
+ALTER TABLE student_progress DISABLE ROW LEVEL SECURITY;
+ALTER TABLE withdrawals DISABLE ROW LEVEL SECURITY;
+ALTER TABLE school_invites DISABLE ROW LEVEL SECURITY;
+ALTER TABLE school_compliance_logs DISABLE ROW LEVEL SECURITY;
+ALTER TABLE school_announcements DISABLE ROW LEVEL SECURITY;
+ALTER TABLE school_activation_codes DISABLE ROW LEVEL SECURITY;
+ALTER TABLE student_invitation_codes DISABLE ROW LEVEL SECURITY;
+ALTER TABLE parent_messages DISABLE ROW LEVEL SECURITY;
+ALTER TABLE parent_notifications DISABLE ROW LEVEL SECURITY;
+ALTER TABLE student_zaps DISABLE ROW LEVEL SECURITY;
+ALTER TABLE lightning_transactions DISABLE ROW LEVEL SECURITY;
+ALTER TABLE legal_agreements DISABLE ROW LEVEL SECURITY;
+ALTER TABLE agreement_acceptances DISABLE ROW LEVEL SECURITY;
+ALTER TABLE ip_violations DISABLE ROW LEVEL SECURITY;
+ALTER TABLE two_factor_secrets DISABLE ROW LEVEL SECURITY;
+ALTER TABLE security_logs DISABLE ROW LEVEL SECURITY;
+
+-- Drop all existing policies
+DO $$ 
+DECLARE
+  r RECORD;
+BEGIN
+  FOR r IN (
+    SELECT schemaname, tablename, policyname
+    FROM pg_policies 
+    WHERE schemaname = 'public'
+  ) LOOP
+    EXECUTE format('DROP POLICY IF EXISTS %I ON %I.%I', 
+      r.policyname, r.schemaname, r.tablename);
+  END LOOP;
+END $$;
