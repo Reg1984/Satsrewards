@@ -15,8 +15,8 @@ Deno.serve(async (req: Request) => {
   try {
     const supabaseUrl = Deno.env.get("SUPABASE_URL") ?? "";
     const supabaseServiceKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? "";
-    const fromEmail = Deno.env.get("OUTREACH_FROM_EMAIL") ?? "outreach@greenstackai.co.uk";
-    const fromName = Deno.env.get("OUTREACH_FROM_NAME") ?? "SatsRewards Team";
+    const fromEmail = Deno.env.get("OUTREACH_FROM_EMAIL") ?? "reginald@satsrewards.co.uk";
+    const fromName = Deno.env.get("OUTREACH_FROM_NAME") ?? "Reginald Orme";
     const replyTo = Deno.env.get("OUTREACH_REPLY_TO") ?? "regorme101@gmail.com";
 
     const supabase = createClient(supabaseUrl, supabaseServiceKey);
@@ -47,6 +47,20 @@ Deno.serve(async (req: Request) => {
       );
     }
 
+    // Always enforce correct sign-off — strips any AI-generated name and replaces with real one
+    const signoff = `\n\nKind regards,\n\nReginald Orme\nFounder, SatsRewards\nreginald@satsrewards.co.uk\nwww.satsrewards.co.uk`;
+    let finalText = text ?? "";
+    let finalHtml = html ?? "";
+
+    if (finalText && !finalText.includes("Reginald Orme")) {
+      // Strip anything after the last paragraph that looks like a sign-off
+      finalText = finalText.replace(/\n\n(Kind regards|Best regards|Regards|Yours sincerely|Best wishes|Warm regards|Many thanks)[^\0]*$/i, "").trimEnd() + signoff;
+    }
+    if (finalHtml && !finalHtml.includes("Reginald Orme")) {
+      const htmlSignoff = signoff.replace(/\n\n/g, "<br/><br/>").replace(/\n/g, "<br/>");
+      finalHtml = finalHtml.replace(/(<br\/>){2}(Kind regards|Best regards|Regards|Yours sincerely|Best wishes|Warm regards|Many thanks)[^\0]*$/i, "").trimEnd() + `<br/><br/>${htmlSignoff}`;
+    }
+
     // In preview_only mode, just return what would be sent without sending
     if (preview_only) {
       return new Response(
@@ -66,8 +80,8 @@ Deno.serve(async (req: Request) => {
         reply_to: replyTo,
         subject,
       };
-      if (html) emailPayload.html = html;
-      if (text) emailPayload.text = text;
+      if (finalHtml) emailPayload.html = finalHtml;
+      if (finalText) emailPayload.text = finalText;
 
       const resendResponse = await fetch("https://api.resend.com/emails", {
         method: "POST",
@@ -87,9 +101,11 @@ Deno.serve(async (req: Request) => {
         sendResult = { error: `Email send failed: ${resendResponse.status}` };
       }
     } else {
-      // No email provider configured — log as simulated send for demo
-      console.log(`[SIMULATED EMAIL] To: ${to} | Subject: ${subject} | Reply-To: ${replyTo}`);
-      sendResult = { id: `simulated-${Date.now()}` };
+      console.error(`[EMAIL NOT SENT] RESEND_API_KEY is not configured. Email to ${to} was NOT delivered. Set RESEND_API_KEY in Supabase edge function secrets.`);
+      return new Response(
+        JSON.stringify({ error: "RESEND_API_KEY not configured — email was not sent. Add it to Supabase edge function secrets." }),
+        { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+      );
     }
 
     // Update the outreach_emails record if email_id was provided
