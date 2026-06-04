@@ -1,0 +1,182 @@
+/* ── App dark theme ─────────────────────────────────────────────────────────
+   Scoped to .app-dark so it never bleeds onto the landing page.
+   Overrides Tailwind utility classes used throughout the dashboards.
+──────────────────────────────────────────────────────────────────────────── */
+
+/* Base */
+.app-dark {
+  background: #0D0F1A;
+  color: #F5F2EC;
+  font-family: 'Inter', system-ui, sans-serif;
+  min-height: 100vh;
+}
+
+/* ── Cards & surfaces ─────────────────────────────────────────────────────── */
+.app-dark .bg-white {
+  background: #13162B !important;
+  border-color: rgba(245,242,236,0.07) !important;
+}
+
+.app-dark .bg-gray-50,
+.app-dark .bg-gray-100 {
+  background: rgba(255,255,255,0.04) !important;
+}
+
+.app-dark .bg-yellow-50 { background: rgba(247,147,26,0.08) !important; }
+.app-dark .bg-blue-50   { background: rgba(96,165,250,0.08) !important; }
+.app-dark .bg-green-50  { background: rgba(74,222,128,0.07) !important; }
+.app-dark .bg-purple-50 { background: rgba(167,139,250,0.08) !important; }
+.app-dark .bg-red-50    { background: rgba(248,113,113,0.08) !important; }
+.app-dark .bg-orange-50 { background: rgba(247,147,26,0.08) !important; }
+.app-dark .bg-indigo-50 { background: rgba(129,140,248,0.08) !important; }
+
+/* Tinted icon backgrounds */
+.app-dark .bg-blue-100   { background: rgba(96,165,250,0.12) !important; }
+.app-dark .bg-green-100  { background: rgba(74,222,128,0.10) !important; }
+.app-dark .bg-orange-100 { background: rgba(247,147,26,0.12) !important; }
+.app-dark .bg-purple-100 { background: rgba(167,139,250,0.12) !important; }
+.app-dark .bg-yellow-100 { background: rgba(251,191,36,0.12) !important; }
+.app-dark .bg-red-100    { background: rgba(248,113,113,0.12) !important; }
+
+/* ── Borders ──────────────────────────────────────────────────────────────── */
+.app-dark .border,
+.app-dark .border-gray-100,
+.app-dark .border-gray-200,
+.app-dark .border-gray-300 {
+  border-color: rgba(245,242,236,0.08) !important;
+}
+.app-dark .border-b,
+.app-dark .border-b-gray-200,
+.app-dark .border-b-gray-100 {
+  border-bottom-color: rgba(245,242,236,0.08) !important;
+}
+.app-dark .border-t { border-top-color: rgba(245,242,236,0.08) !important; }
+
+/* ── Typography ───────────────────────────────────────────────────────────── */
+.app-dark .text-gray-900,
+.app-dark .text-gray-800 {
+  color: #F5F2EC !important;
+}
+.app-dark .text-gray-700,
+.app-dark .text-gray-600 {
+  color: rgba(245,242,236,0.6) !important;
+}
+.app-dark .text-gray-500,
+.app-dark .text-gray-400 {
+  color: rgba(245,242,236,0.38) !important;
+}
+
+/* Brand colors stay */
+.app-dark .text-orange-500,
+.app-dark .text-orange-600 { color: #F7931A !important; }
+.app-dark .text-blue-600   { color: rgb(147,197,253) !important; }
+.app-dark .text-green-600  { color: rgb(134,239,172) !important; }
+.app-dark .text-purple-600 { color: rgb(196,181,253) !important; }
+.app-dark .text-yellow-600 { color: rgb(253,224,71) !important; }
+.app-dark .text-red-600,
+.app-dark .text-red-500    { color: rgb(252,165,165) !important; }
+
+/* Small badges */
+.app-dark .text-blue-800   { color: rgb(147,197,253) !important; }
+.app-dark .text-green-800  { color: rgb(134,239,172) !important; }
+.app-dark .text-orange-800 { color: #F7931A !important; }
+.app-dark .text-purple-800,
+.app-dark .text-purple-900 { color: rgb(196,181,253) !important; }
+.app-dark .text-yellow-800 { color: rgb(253,224,71) !important; }
+.app-dark .text-red-800    { color: rgb(252,165,165) !important; }
+.app-dark .text-red-700    { color: rgb(252,165,165) !important; }
+.app-dark .text-blue-700,
+.app-dark .text-blue-800   { color: rgb(147,197,253) !important; }
+.app-dark .text-green-700  { color: rgb(134,239,172) !important; }
+.app-dark .text-purple-700 { color: rgb(196,181,253) !important; }
+
+/* ── Shadows ─────────────────────────────────────────────────────────────── */
+.app-dark .shadow-sm,
+.app-dark .shadow {
+  box-shadow: 0 1px 3px rgba(0,0,0,0.5), 0 0 0 1px rgba(245,242,236,0.06) !important;
+}
+.app-dark .shadow-md {
+  box-shadow: 0 4px 16px rgba(0,0,0,0.6), 0 0 0 1px rgba(245,242,236,0.08) !important;
+}
+.app-dark .hover\:shadow-md:hover {
+  box-shadow: 0 4px 20px rgba(0,0,0,0.7), 0 0 0 1px rgba(247,147,26,0.2) !important;
+}
+
+/* ── Form inputs ─────────────────────────────────────────────────────────── */
+.app-dark input[type="text"],
+.app-dark input[type="email"],
+.app-dark input[type="number"],
+.app-dark input[type="password"],
+.app-dark select,
+.app-dark textarea {
+  background: rgba(255,255,255,0.05) !important;
+  border-color: rgba(245,242,236,0.12) !important;
+  color: #F5F2EC !important;
+}
+.app-dark input::placeholder,
+.app-dark textarea::placeholder {
+  color: rgba(245,242,236,0.25) !important;
+}
+.app-dark select option {
+  background: #13162B;
+  color: #F5F2EC;
+}
+
+/* ── Progress bars ───────────────────────────────────────────────────────── */
+.app-dark .bg-gray-100.h-2,
+.app-dark .h-2.bg-gray-100 {
+  background: rgba(255,255,255,0.08) !important;
+}
+.app-dark .h-16.bg-gray-100 {
+  background: rgba(255,255,255,0.06) !important;
+}
+
+/* ── Hover states ────────────────────────────────────────────────────────── */
+.app-dark .hover\:bg-gray-100:hover { background: rgba(255,255,255,0.07) !important; }
+.app-dark .hover\:bg-orange-50:hover { background: rgba(247,147,26,0.1) !important; }
+.app-dark .hover\:bg-blue-100:hover  { background: rgba(96,165,250,0.15) !important; }
+.app-dark .hover\:bg-purple-100:hover { background: rgba(167,139,250,0.15) !important; }
+.app-dark .hover\:bg-green-100:hover { background: rgba(74,222,128,0.12) !important; }
+.app-dark .hover\:bg-red-200:hover   { background: rgba(248,113,113,0.2) !important; }
+.app-dark .hover\:bg-green-200:hover { background: rgba(74,222,128,0.2) !important; }
+.app-dark .hover\:shadow-neu:hover,
+.app-dark .hover\:shadow-neu-sm:hover {
+  box-shadow: 0 0 0 1px rgba(247,147,26,0.2), 0 8px 24px rgba(0,0,0,0.5) !important;
+}
+
+/* ── Tabs ────────────────────────────────────────────────────────────────── */
+.app-dark .border-b-2.border-blue-500,
+.app-dark .border-b-2.border-blue-600 {
+  border-bottom-color: #F7931A !important;
+}
+.app-dark .text-blue-600.border-b-2 {
+  color: #F7931A !important;
+}
+
+/* ── Badges / pills ──────────────────────────────────────────────────────── */
+.app-dark .bg-orange-100.text-orange-800,
+.app-dark .bg-orange-500 {
+  background: rgba(247,147,26,0.15) !important;
+}
+.app-dark .bg-blue-100.text-blue-800   { background: rgba(96,165,250,0.12) !important; }
+.app-dark .bg-green-100.text-green-800 { background: rgba(74,222,128,0.10) !important; }
+.app-dark .bg-red-100.text-red-800     { background: rgba(248,113,113,0.10) !important; }
+.app-dark .bg-yellow-100.text-yellow-800 { background: rgba(251,191,36,0.12) !important; }
+.app-dark .bg-purple-100.text-purple-800 { background: rgba(167,139,250,0.12) !important; }
+
+/* ── Spinner ──────────────────────────────────────────────────────────────── */
+.app-dark .border-b-2.border-orange-500 { border-bottom-color: #F7931A !important; }
+.app-dark .border-b-2.border-blue-500   { border-bottom-color: rgb(147,197,253) !important; }
+.app-dark .border-b-2.border-purple-500 { border-bottom-color: rgb(196,181,253) !important; }
+
+/* Numbers should use JetBrains Mono */
+.app-dark .text-2xl.font-bold,
+.app-dark .text-xl.font-bold {
+  font-family: 'JetBrains Mono', monospace !important;
+}
+
+/* Section headings use Cormorant Garamond */
+.app-dark h1, .app-dark h2, .app-dark h3 {
+  font-family: 'Cormorant Garamond', Georgia, serif !important;
+  letter-spacing: -0.01em;
+}

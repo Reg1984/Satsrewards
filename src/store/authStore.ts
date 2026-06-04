@@ -7,6 +7,7 @@ interface AuthState {
   loading: boolean;
   error: string | null;
   signIn: (email: string, password: string) => Promise<{ user: User | null; error?: string }>;
+  signUp: (email: string, password: string, name: string) => Promise<{ user: User | null; error?: string }>;
   signOut: () => Promise<void>;
   setUser: (user: User | null) => void;
   initializeAuth: () => Promise<void>;
@@ -49,6 +50,27 @@ export const useAuthStore = create<AuthState>((set) => ({
     const profile = await fetchUserProfile(data.user.id);
     set({ user: profile, loading: false, error: null });
     return { user: profile };
+  },
+
+  signUp: async (email, password, name) => {
+    set({ loading: true, error: null });
+    const { data, error } = await supabase.auth.signUp({
+      email,
+      password,
+      options: { data: { name, role: 'admin' } },
+    });
+    if (error) {
+      set({ loading: false, error: error.message });
+      return { user: null, error: error.message };
+    }
+    if (data.session) {
+      const profile = await fetchUserProfile(data.user!.id);
+      set({ user: profile, loading: false, error: null });
+      return { user: profile };
+    }
+    // Email confirmation required
+    set({ loading: false, error: null });
+    return { user: null, error: 'confirm_email' };
   },
 
   signOut: async () => {
