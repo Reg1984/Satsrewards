@@ -41,35 +41,29 @@ export const useAuthStore = create<AuthState>((set) => ({
   error: null,
 
   signIn: async (email, password) => {
-    set({ loading: true, error: null });
     const { data, error } = await supabase.auth.signInWithPassword({ email, password });
     if (error || !data.user) {
-      set({ loading: false, error: error?.message ?? 'Sign in failed' });
-      return { user: null, error: error?.message };
+      return { user: null, error: error?.message ?? 'Sign in failed' };
     }
     const profile = await fetchUserProfile(data.user.id);
-    set({ user: profile, loading: false, error: null });
+    set({ user: profile, error: null });
     return { user: profile };
   },
 
   signUp: async (email, password, name) => {
-    set({ loading: true, error: null });
     const { data, error } = await supabase.auth.signUp({
       email,
       password,
       options: { data: { name, role: 'admin' } },
     });
     if (error) {
-      set({ loading: false, error: error.message });
       return { user: null, error: error.message };
     }
     if (data.session) {
       const profile = await fetchUserProfile(data.user!.id);
-      set({ user: profile, loading: false, error: null });
+      set({ user: profile, error: null });
       return { user: profile };
     }
-    // Email confirmation required
-    set({ loading: false, error: null });
     return { user: null, error: 'confirm_email' };
   },
 
